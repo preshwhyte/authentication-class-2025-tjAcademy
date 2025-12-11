@@ -10,12 +10,24 @@ const userSchema = new mongoose.Schema({
         required: true,
         unique: true,
     },
+    role: {
+        type: String,
+        enum: ['user', 'admin'],
+        default: 'user',
+    },
     password: {
         type: String,
         required: true,
     },
     otp: {
         type: String,
+    },
+    isVerified: {
+        type: Boolean,
+        default: false,
+    },
+    otpExpiry: {
+        type: Date,
     }
 }, { timestamps: true,
     versionKey: false

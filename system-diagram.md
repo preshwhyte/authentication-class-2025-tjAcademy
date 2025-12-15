@@ -160,3 +160,102 @@ sequenceDiagram
 | 404 | Not Found | User not found during login |
 | 409 | Conflict | User already exists during signup |
 | 500 | Internal Server Error | Unhandled server errors |
+
+## Email Delivery Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as Developer
+    participant Google as Google Account Security
+    participant Env as .env Config
+    participant Client as Client App
+    participant Express as Express Server<br/>(index.js)
+    participant Controller as Auth Controller<br/>(user.controller.js)
+    participant EmailService as Email Service<br/>(utils/emailService.js)
+    participant Crypto as Crypto Module
+    participant Templates as EJS Templates
+    participant Transport as Nodemailer Transporter
+    participant Gmail as Gmail SMTP
+    participant Inbox as User Inbox
+
+    %% Pre-setup: Gmail App Password
+    Dev->>Google: Sign in · Navigate to Security · Create App Password
+    Google-->>Dev: Return 16-character app password
+    Dev->>Env: Store EMAIL_USER & EMAIL_PASS in .env
+    Dev->>Express: npm run dev (loads environment variables)
+    Express->>EmailService: Initialize transporter with creds
+    EmailService->>Transport: createTransport()
+    Transport->>Gmail: verify()
+    Gmail-->>Transport: 250 Ready to start TLS
+    Transport-->>EmailService: Transport ready
+
+    %% Signup Flow
+    rect rgba(56, 182, 255, 0.16)
+    Note over Client,Inbox: Signup → Welcome email
+    Client->>Express: POST /api/users/signup {name,email,password}
+    Express->>Controller: signup()
+    Controller->>Controller: Validate input · hash password · persist user
+    Note right of Controller: OTP stored with 10 min expiry (email currently disabled)
+    Controller->>EmailService: sendWelcomeEmail({email,name,loginUrl})
+    EmailService->>Templates: render welcome.ejs
+    Templates-->>EmailService: Welcome HTML content
+    EmailService->>Transport: sendMail(welcome)
+    Transport->>Gmail: Transmit SMTP payload
+    Gmail-->>Inbox: Deliver welcome message
+    Gmail-->>Transport: 250 Accepted
+    end
+
+    %% Login Flow
+    rect rgba(154, 99, 255, 0.14)
+    Note over Client,Inbox: Login → Security notification
+    Client->>Express: POST /api/users/login {email,password}
+    Express->>Controller: login()
+    Controller->>Controller: Verify user & compare password
+    Controller->>EmailService: sendLoginNotification({email,name,location,device})
+    EmailService->>Templates: render login-notification.ejs
+    Templates-->>EmailService: Security HTML content
+    EmailService->>Transport: sendMail(login alert)
+    Transport->>Gmail: Transmit SMTP payload
+    Gmail-->>Inbox: Deliver login notification
+    Gmail-->>Transport: 250 Accepted
+    end
+
+    %% Forgot Password Flow
+    rect rgba(255, 173, 51, 0.16)
+    Note over Client,Inbox: Forgot password → Reset token email
+    Client->>Express: POST /api/users/forget-password {email}
+    Express->>Controller: forgetPassword()
+    Controller->>Crypto: randomBytes(32) · sha256(token)
+    Crypto-->>Controller: resetToken & hashedToken
+    Controller->>Controller: Persist hashed token, expiry, and OTP fallback
+    Note right of Controller: Legacy plain-text OTP email sent via config/email
+    Controller->>EmailService: sendPasswordResetEmail({email,name,resetToken,resetUrl})
+    EmailService->>Templates: render forgot-password.ejs
+    Templates-->>EmailService: Reset instructions HTML
+    EmailService->>Transport: sendMail(reset)
+    Transport->>Gmail: Transmit SMTP payload
+    Gmail-->>Inbox: Deliver reset instructions
+    Gmail-->>Transport: 250 Accepted
+    end
+
+    %% Reset Password Flow
+    rect rgba(16, 185, 129, 0.16)
+    Note over Client,Inbox: Reset password → Success email
+    Client->>Express: POST /api/users/reset-password {token|otp,newPassword}
+    Express->>Controller: resetPassword()
+    Controller->>Crypto: sha256(token) (when provided)
+    Crypto-->>Controller: Hashed token for lookup
+    Controller->>Controller: Validate token/OTP · hash new password · clear secrets
+    Controller->>EmailService: sendPasswordResetSuccessEmail({email,name,location})
+    EmailService->>Templates: render password-reset-success.ejs
+    Templates-->>EmailService: Success confirmation HTML
+    EmailService->>Transport: sendMail(success)
+    Transport->>Gmail: Transmit SMTP payload
+    Gmail-->>Inbox: Deliver confirmation email
+    Gmail-->>Transport: 250 Accepted
+    end
+
+    %% Monitoring & Errors
+    Note over EmailService,Gmail: Transport logs successes or errors for each call
+```

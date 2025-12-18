@@ -45,11 +45,11 @@ const signup = async (req, res) => {
     // );
 
     // Send welcome email (async, don't block response)
-    sendWelcomeEmail({ 
-      email, 
-      name,
-      loginUrl: process.env.LOGIN_URL || 'http://localhost:5000/api/users/login'
-    }).catch(err => console.error('Welcome email failed:', err));
+    // sendWelcomeEmail({ 
+    //   email, 
+    //   name,
+    //   loginUrl: process.env.LOGIN_URL || 'http://localhost:5000/api/users/login'
+    // }).catch(err => console.error('Welcome email failed:', err));
 
     return res.status(201).json({ message: "User created successfully" });
   } catch (e) {
@@ -85,13 +85,13 @@ const login = async (req, res) => {
     });
 
     // Send login notification email (async, don't block response)
-    sendLoginNotification({
-      email: user.email,
-      name: user.name,
-      location: req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'Unknown',
-      device: req.headers['user-agent'] || 'Web Browser',
-      resetPasswordUrl: process.env.FORGOT_PASSWORD_URL || 'http://localhost:5000/api/users/forgot-password'
-    }).catch(err => console.error('Login notification failed:', err));
+    // sendLoginNotification({
+    //   email: user.email,
+    //   name: user.name,
+    //   location: req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'Unknown',
+    //   device: req.headers['user-agent'] || 'Web Browser',
+    //   resetPasswordUrl: process.env.FORGOT_PASSWORD_URL || 'http://localhost:5000/api/users/forgot-password'
+    // }).catch(err => console.error('Login notification failed:', err));
 
     return res.status(200).json({ message: "Login successful", token });
   } catch (e) {
@@ -124,22 +124,22 @@ const forgetPassword = async (req, res) => {
     user.otp = otp;
     await user.save();
 
-    // Send old OTP email
-    await sendEmail(
-      email,
-      "Password Reset OTP",
-      `Your OTP for password reset is: ${otp}`
-    );
+    // // Send old OTP email
+    // await sendEmail(
+    //   email,
+    //   "Password Reset OTP",
+    //   `Your OTP for password reset is: ${otp}`
+    // );
 
-    // Send new formatted password reset email with token
-    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
-    sendPasswordResetEmail({
-      email: user.email,
-      name: user.name,
-      resetToken,
-      resetUrl,
-      expiryTime: '1 hour'
-    }).catch(err => console.error('Password reset email failed:', err));
+    // // Send new formatted password reset email with token
+    // const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
+    // sendPasswordResetEmail({
+    //   email: user.email,
+    //   name: user.name,
+    //   resetToken,
+    //   resetUrl,
+    //   expiryTime: '1 hour'
+    // }).catch(err => console.error('Password reset email failed:', err));
 
     return res.status(200).json({ message: "Password reset instructions sent to email", otp });
   } catch (e) {
@@ -183,12 +183,12 @@ const resetPassword = async (req, res) => {
     await user.save();
     
     // Send password reset success email
-    sendPasswordResetSuccessEmail({
-      email: user.email,
-      name: user.name,
-      location: req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'Unknown',
-      loginUrl: process.env.LOGIN_URL || 'http://localhost:5000/api/users/login'
-    }).catch(err => console.error('Password reset success email failed:', err));
+    // sendPasswordResetSuccessEmail({
+    //   email: user.email,
+    //   name: user.name,
+    //   location: req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'Unknown',
+    //   loginUrl: process.env.LOGIN_URL || 'http://localhost:5000/api/users/login'
+    // }).catch(err => console.error('Password reset success email failed:', err));
     
     return res.status(200).json({ message: "Password reset successful" });
   } catch (e) {

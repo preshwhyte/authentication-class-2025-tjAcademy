@@ -1,0 +1,82 @@
+sequenceDiagram
+    autonumber
+    participant Client
+    participant Express as Express Server<br/>(index.js)
+    participant Router as User Routes<br/>(user.routes.js)
+    participant Controller as User Controller<br/>(user.controller.js)
+    participant BCrypt as BCrypt Library
+    participant Model as User Model<br/>(user.models.js)
+    participant MongoDB as MongoDB Database<br/>(via Mongoose)
+
+    %% Signup Flow
+    rect rgba(56, 182, 255, 0.16)
+    Note over Client,MongoDB: SIGNUP PROCESS
+    
+    Client->>Express: POST /api/users/signup<br/>{name, email, password}
+    Express->>Router: Route to /signup endpoint
+    Router->>Controller: Call signup()
+    
+    Controller->>Controller: Validate input fields<br/>(name, email, password)
+    
+    alt Missing required fields
+        Controller-->>Client: 400 Bad Request<br/>"All fields are required"
+    else All fields present
+        Controller->>Model: findOne({email})
+        Model->>MongoDB: Query user by email
+        MongoDB-->>Model: Return user or null
+        Model-->>Controller: User result
+        
+        alt User already exists
+            Controller-->>Client: 409 Conflict<br/>"User already exists"
+        else User does not exist
+            Controller->>BCrypt: hash(password, 10)
+            BCrypt-->>Controller: hashedPassword
+            
+            Controller->>Model: Create new User<br/>{name, email, hashedPassword}
+            Model->>MongoDB: Save user document
+            MongoDB-->>Model: Saved user
+            Model-->>Controller: User saved successfully
+            
+            Controller-->>Client: 201 Created<br/>"User created successfully"
+        end
+    end
+    end
+
+    %% Login Flow
+    rect rgba(154, 99, 255, 0.14)
+    Note over Client,MongoDB: LOGIN PROCESS
+    
+    Client->>Express: POST /api/users/login<br/>{email, password}
+    Express->>Router: Route to /login endpoint
+    Router->>Controller: Call login()
+    
+    Controller->>Controller: Validate input fields<br/>(email, password)
+    
+    alt Missing required fields
+        Controller-->>Client: 400 Bad Request<br/>"All fields are required"
+    else All fields present
+        Controller->>Model: findOne({email})
+        Model->>MongoDB: Query user by email
+        MongoDB-->>Model: Return user or null
+        Model-->>Controller: User result
+        
+        alt User not found
+            Controller-->>Client: 404 Not Found<br/>"User not found"
+        else User found
+            Controller->>BCrypt: compare(password, user.password)
+            BCrypt-->>Controller: comparison result
+            
+            alt Password does not match
+                Controller-->>Client: 401 Unauthorized<br/>"Invalid credentials"
+            else Password matches
+                Controller-->>Client: 200 OK<br/>"Login successful"
+            end
+        end
+    end
+    end
+
+    %% Error handling
+    rect rgba(255, 99, 132, 0.12)
+    Note over Controller,Client: ERROR HANDLING (Both Endpoints)
+    Note right of Controller: Any unhandled errors<br/>return 500 Internal Server Error
+    end

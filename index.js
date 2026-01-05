@@ -5,6 +5,7 @@ const connectDB = require('./src/config/db');
 require('dotenv').config();
 
 const userRoutes = require('./src/routes/user.routes');
+const walletRoutes = require('./src/routes/user.wallets.routes');
 
 const port = process.env.PORT || 5000;
 
@@ -21,6 +22,7 @@ app.get('/', (req, res) => {
 
 
 app.use('/api/users', userRoutes);
+app.use('/api/wallets', walletRoutes);
 
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);

@@ -49,7 +49,7 @@ const getAllWallets = async (req, res) => {
 
     const wallets = await UserWallet.find().populate(
       "userId",
-      "email phoneNumber"
+      "email"
     );
     return res.status(200).json({ wallets });
   } catch (e) {

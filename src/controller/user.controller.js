@@ -2,13 +2,14 @@ const User = require("../models/user.models");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const sendEmail = require("../config/email");
-const { 
-  sendWelcomeEmail, 
-  sendLoginNotification, 
-  sendPasswordResetEmail, 
-  sendPasswordResetSuccessEmail 
+const {
+  sendWelcomeEmail,
+  sendLoginNotification,
+  sendPasswordResetEmail,
+  sendPasswordResetSuccessEmail,
 } = require("../utils/emailService");
 const crypto = require("crypto");
+const cloudinary = require("../config/cloudinary");
 
 const signup = async (req, res) => {
   const { name, email, password } = req.body;
@@ -45,8 +46,8 @@ const signup = async (req, res) => {
     // );
 
     // Send welcome email (async, don't block response)
-    // sendWelcomeEmail({ 
-    //   email, 
+    // sendWelcomeEmail({
+    //   email,
     //   name,
     //   loginUrl: process.env.LOGIN_URL || 'http://localhost:5000/api/users/login'
     // }).catch(err => console.error('Welcome email failed:', err));
@@ -80,9 +81,13 @@ const login = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    const token = await jwt.sign({ userId: user._id, name: user.name }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
-    });
+    const token = await jwt.sign(
+      { userId: user._id, name: user.name },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "1h",
+      }
+    );
 
     // Send login notification email (async, don't block response)
     // sendLoginNotification({
@@ -111,14 +116,17 @@ const forgetPassword = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
-    
+
     // Generate reset token
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-    
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+
     user.resetPasswordToken = hashedToken;
     user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
-    
+
     // Also generate OTP for backward compatibility
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     user.otp = otp;
@@ -141,7 +149,9 @@ const forgetPassword = async (req, res) => {
     //   expiryTime: '1 hour'
     // }).catch(err => console.error('Password reset email failed:', err));
 
-    return res.status(200).json({ message: "Password reset instructions sent to email", otp });
+    return res
+      .status(200)
+      .json({ message: "Password reset instructions sent to email", otp });
   } catch (e) {
     console.error("Error during forget password:", e);
     return res.status(500).json({ message: "Internal server error" });
@@ -152,21 +162,28 @@ const resetPassword = async (req, res) => {
   const { otp, newPassword, token } = req.body;
   try {
     if ((!otp && !token) || !newPassword) {
-      return res.status(400).json({ message: "Reset token/OTP and new password are required" });
+      return res
+        .status(400)
+        .json({ message: "Reset token/OTP and new password are required" });
     }
-    
+
     let user;
-    
+
     // Support both token and OTP methods
     if (token) {
-      const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+      const hashedToken = crypto
+        .createHash("sha256")
+        .update(token)
+        .digest("hex");
       user = await User.findOne({
         resetPasswordToken: hashedToken,
-        resetPasswordExpires: { $gt: Date.now() }
+        resetPasswordExpires: { $gt: Date.now() },
       });
-      
+
       if (!user) {
-        return res.status(400).json({ message: "Invalid or expired reset token" });
+        return res
+          .status(400)
+          .json({ message: "Invalid or expired reset token" });
       }
     } else {
       user = await User.findOne({ otp });
@@ -174,14 +191,14 @@ const resetPassword = async (req, res) => {
         return res.status(404).json({ message: "Invalid OTP" });
       }
     }
-    
+
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     user.password = hashedPassword;
     user.otp = null;
     user.resetPasswordToken = null;
     user.resetPasswordExpires = null;
     await user.save();
-    
+
     // Send password reset success email
     // sendPasswordResetSuccessEmail({
     //   email: user.email,
@@ -189,7 +206,7 @@ const resetPassword = async (req, res) => {
     //   location: req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'Unknown',
     //   loginUrl: process.env.LOGIN_URL || 'http://localhost:5000/api/users/login'
     // }).catch(err => console.error('Password reset success email failed:', err));
-    
+
     return res.status(200).json({ message: "Password reset successful" });
   } catch (e) {
     console.error("Error during reset password:", e);
@@ -247,13 +264,13 @@ const resendOtp = async (req, res) => {
 };
 
 const getAllUsers = async (req, res) => {
-   const { userId } = req.user;
+  const { userId } = req.user;
   try {
     const adminUser = await User.findById(userId);
-    if (adminUser.role !== 'admin') {
+    if (adminUser.role !== "admin") {
       return res.status(403).json({ message: "Access denied" });
     }
-    const users = await User.find().select('-password -otp -otpExpiry');
+    const users = await User.find().select("-password -otp -otpExpiry");
     return res.status(200).json(users);
   } catch (e) {
     console.error("Error fetching users:", e);
@@ -261,4 +278,41 @@ const getAllUsers = async (req, res) => {
   }
 };
 
-module.exports = { signup, login, forgetPassword, resetPassword, verifyOtp, resendOtp, getAllUsers };
+// Upload Profile Picture
+const uploadProfilePicture = async (req, res) => {
+  const { userId } = req.user;
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const uploadResult = await cloudinary.uploader.upload(req.file.path, {
+      folder: "profile_pictures",
+      public_id: `user_${userId}_profile`,
+    });
+
+    user.profilePicture = uploadResult.secure_url;
+    await user.save();
+
+    return res
+      .status(200)
+      .json({ message: "Profile picture uploaded successfully" });
+  } catch (e) {
+    console.error("Error uploading profile picture:", e);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+module.exports = {
+  signup,
+  login,
+  forgetPassword,
+  resetPassword,
+  verifyOtp,
+  resendOtp,
+  getAllUsers,
+  uploadProfilePicture,
+};

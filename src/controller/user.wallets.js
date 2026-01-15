@@ -5,6 +5,7 @@ const Wallet = require("../models/user.wallets");
 const mongoose = require("mongoose");
 const Flutterwave = require("flutterwave-node-v3");
 const axios = require("axios");
+const Transaction = require("../models/user.transactions");
 
 // Create Wallet
 const createWallet = async (req, res) => {
@@ -159,7 +160,7 @@ const transferFunds = async (req, res) => {
 const createRedirectUrl = async (req, res) => {
   try {
     const { userId } = req.user;
-    const { amount, currency, redirectUrl } = req.body;
+    const { amount, currency, accountNumber, redirectUrl } = req.body;
 
     if (!userId) {
       return res.status(400).json({ message: "User ID is required" });
@@ -212,6 +213,24 @@ const createRedirectUrl = async (req, res) => {
         },
       }
     );
+
+    const wallet = await Wallet.findOne({ accountNumber: accountNumber });
+
+    // Add Transaction Record Here 
+    const newTransaction = new Transaction({
+      userId: mongoose.Types.ObjectId(userId),
+      walletId: mongoose.Types.ObjectId(wallet._id),
+      referenceNumber: txRef,
+      type: "credit",
+      amount: amount,
+      currency: currency,
+      balanceBefore: wallet.balance,
+      balanceAfter: parseFloat(wallet.balance) + parseFloat(amount),
+      description: "Wallet funding via Flutterwave",
+      status: "pending",
+    });
+
+    await newTransaction.save();
 
     return res.status(201).json({
       message: "Payment link created successfully",
@@ -270,27 +289,38 @@ const flutterwaveWebhook = async (req, res) => {
         const txParts = tx_ref.split("-");
         const userId = txParts[txParts.length - 1];
 
-        // Find user's wallet and credit it
-        const wallet = await Wallet.findOne({ userId: userId });
+        // Find Transaction Record 
+        const transactionRecord = await Transaction.findOne({ referenceNumber: tx_ref });
+        console.log("Transaction Record Found:", transactionRecord);
+
+        // Find user's wallet with the wallet id from transaction and credit it
+        const wallet = await Wallet.findOne({ _id: transactionRecord.walletId });
 
         console.log("User Wallet Found:", wallet);
 
         if (wallet) {
           // Credit the wallet
           await Wallet.findOneAndUpdate(
-            { userId: userId },
+            { _id: transactionRecord.walletId },
             { $inc: { balance: amount } },
             { new: true }
           );
 
           // Get user for email notification
-          const user = await User.findById(userId);
+          const user = await User.findById(transactionRecord.userId);
           console.log("User Found for Email Notification:", user);
 
           if (user) {
             // Send success email (optional)
             console.log(`Wallet funded successfully for user: ${user.email}, Amount: ${amount} ${currency}`);
           }
+
+          // Update the transaction status to successful
+          await Transaction.findOneAndUpdate(
+            { referenceNumber: tx_ref },
+            { status: "successful" },
+            { new: true }
+          );
 
           return res.status(200).json({ message: "Wallet funded successfully" });
         } else {
